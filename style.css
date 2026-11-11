@@ -1,0 +1,258 @@
+/* Oslo-turer: a dream of an adventure game that never was. Deep indigo glass, lantern gold,
+   and a map that is parchment by day and night-blue after dark. */
+
+:root {
+  --ink: #f4eddd;
+  --muted: rgba(244, 237, 221, 0.64);
+  --faint: rgba(244, 237, 221, 0.14);
+  --glass: rgba(9, 12, 30, 0.87);
+  --card: rgba(255, 255, 255, 0.055);
+  --gold: #ffd98a;
+  --gold-deep: #f2a93b;
+  --on-gold: #1c1407;
+  --warn: #ff9d7a;
+  --radius: 14px;
+  --display: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Light along the route (also set in app.js for the map). */
+  --sun: #ffc24a;
+  --shade: #6f7fe0;
+  --lit: #ffd98a;
+  --dim: #b99a5a;
+  --dark: #4a5078;
+}
+
+/* The hour: sky, hills and city in the picture, and the paper of the map. */
+body[data-phase="night"] { --sky-top: #040716; --sky-mid: #1a2260; --sky-low: #5a4391; --hill: #131a4a; --city: #070a1e;
+  --opera: #2c3364; --stars: 1; --lights: 1; --moon: 1; --paper: #0a0f2c;
+  --tiles: invert(1) sepia(0.8) hue-rotate(195deg) saturate(2.4) brightness(0.72) contrast(0.95); }
+body[data-phase="blue"] { --sky-top: #0b1643; --sky-mid: #2c3f91; --sky-low: #e0876b; --hill: #18225a; --city: #0a1030;
+  --opera: #4a5496; --stars: 0.55; --lights: 1; --moon: 0; --paper: #0f1740;
+  --tiles: invert(1) sepia(0.7) hue-rotate(188deg) saturate(2.1) brightness(0.9) contrast(0.9); }
+body[data-phase="golden"] { --sky-top: #31509f; --sky-mid: #d98e79; --sky-low: #ffd08a; --hill: #5b4470; --city: #2b2141;
+  --opera: #f3dcc4; --stars: 0; --lights: 0.5; --moon: 0; --paper: #e6cfa2;
+  --tiles: sepia(0.9) saturate(1.7) hue-rotate(-16deg) brightness(0.97) contrast(0.95); }
+body[data-phase="day"] { --sky-top: #3c7bd0; --sky-mid: #86bfee; --sky-low: #e3eef2; --hill: #4c7396; --city: #2f4a68;
+  --opera: #f6f8f9; --stars: 0; --lights: 0; --moon: 0; --paper: #eadfc4;
+  --tiles: sepia(0.62) saturate(1.05) hue-rotate(-8deg) brightness(1.03) contrast(0.92); }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+
+body {
+  background: #070a1c;
+  color: var(--ink);
+  font: 16px/1.5 var(--serif);
+  font-variant-numeric: lining-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- the opening ---------------------------------------------------------------------------- */
+
+#veil {
+  position: fixed; inset: 0; z-index: 3000; display: grid; place-content: center; text-align: center;
+  background: #000; color: #fff; font-family: var(--display); pointer-events: none;
+  transition: opacity 1.6s ease;
+}
+#veil.lifted { opacity: 0; }
+.veil-title { font-size: clamp(26px, 5vw, 60px); letter-spacing: 0.5em; margin-right: -0.5em; text-transform: uppercase; opacity: 0.92; }
+.veil-sub { margin-top: 1.6em; font: 12px var(--sans); letter-spacing: 0.35em; text-transform: uppercase; opacity: 0.45;
+  animation: breathe 2.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: 0.15; } }
+
+/* --- the map -------------------------------------------------------------------------------- */
+
+.layout { position: fixed; inset: 0; }
+#map { position: absolute; inset: 0; background: var(--paper); transition: background 1.4s ease; }
+#map.picking { cursor: crosshair; }
+.leaflet-tile-pane { filter: var(--tiles); transition: filter 1.4s ease; }
+/* The edges of the world fade into the dark. */
+#map::after {
+  content: ""; position: absolute; inset: 0; z-index: 450; pointer-events: none;
+  background: radial-gradient(ellipse at 60% 50%, transparent 52%, rgba(7, 10, 28, 0.6) 100%);
+}
+.route-glow { filter: blur(5px); }
+/* Hides the hairline seams between map tiles. */
+.leaflet-tile-container img { width: 256.5px !important; height: 256.5px !important; }
+.leaflet-container { font-family: var(--sans); }
+.leaflet-bar { border: 1px solid var(--faint) !important; border-radius: 12px; overflow: hidden; box-shadow: none; }
+.leaflet-bar a, .leaflet-bar a:hover { background: var(--glass); color: var(--ink); border-bottom-color: var(--faint);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+.leaflet-control-attribution { background: rgba(9, 12, 30, 0.6) !important; color: var(--muted) !important; }
+.leaflet-control-attribution a { color: var(--ink) !important; }
+.leaflet-tooltip { background: var(--glass); color: var(--ink); border: 1px solid var(--faint); border-radius: 8px;
+  font: italic 14px var(--serif); box-shadow: none; }
+.leaflet-tooltip::before { display: none; }
+
+.me-dot { width: 18px; height: 18px; border-radius: 50%; background: #fff7dd; border: 3px solid var(--gold-deep);
+  box-shadow: 0 0 0 6px rgba(255, 217, 138, 0.28), 0 0 22px 6px rgba(255, 200, 100, 0.7); }
+
+/* --- the panel ------------------------------------------------------------------------------ */
+
+.panel {
+  position: absolute; z-index: 1100; top: 16px; left: 16px; bottom: 16px; width: 410px; max-width: calc(100vw - 32px);
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--glass); border: 1px solid var(--faint); border-radius: 20px;
+  -webkit-backdrop-filter: blur(20px) saturate(1.2); backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  scrollbar-width: thin; scrollbar-color: var(--faint) transparent;
+}
+.layout.walking .panel { bottom: auto; max-height: calc(100% - 32px); }
+.inner { padding: 18px 20px 6px; }
+
+.scene { position: relative; height: 236px; overflow: hidden; border-radius: 19px 19px 0 0; }
+.scene svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.scene::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(4, 7, 22, 0.35), transparent 40%, transparent 62%, rgba(9, 12, 30, 0.8) 84%, rgba(9, 12, 30, 0.95)); }
+.scene-title { position: absolute; z-index: 1; left: 20px; right: 20px; top: 16px; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.7); }
+.scene-title h1 { margin: 0; font: 500 1.55rem/1.1 var(--display); letter-spacing: 0.32em; text-transform: uppercase; }
+.scene-title p { margin: 4px 0 0; font: italic 500 1.05rem var(--display); letter-spacing: 0.03em; color: var(--muted); }
+
+.sky-top { stop-color: var(--sky-top); } .sky-mid { stop-color: var(--sky-mid); } .sky-low { stop-color: var(--sky-low); }
+.sky-top, .sky-mid, .sky-low { transition: stop-color 1.4s ease; }
+.hills { fill: var(--hill); } .city { fill: var(--city); } .opera { fill: var(--opera); } .moon-bite { fill: var(--sky-top); }
+.hills, .city, .opera, .moon-bite { transition: fill 1.4s ease; }
+.stars { opacity: var(--stars); } .lights { opacity: var(--lights); } .moon { opacity: var(--moon); }
+.stars, .lights, .moon, .sun { transition: opacity 1.4s ease; }
+.sun { transition: opacity 1.4s ease, transform 1.4s ease; }
+.sun-disc { fill: #fff3cf; }
+.ripples { opacity: 0.5; }
+
+fieldset { border: 0; margin: 0 0 16px; padding: 0; min-width: 0; }
+legend, .label, .detail h3 {
+  padding: 0; margin: 0 0 8px; font: 600 0.68rem var(--sans); letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted);
+}
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chip {
+  font: 0.95rem var(--serif); padding: 6px 13px; cursor: pointer;
+  border: 1px solid var(--faint); border-radius: 999px; background: var(--card); color: var(--ink);
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.chip:hover { border-color: rgba(255, 217, 138, 0.5); }
+.chip[aria-pressed="true"] {
+  background: linear-gradient(180deg, #ffe3a6, #f6bd5a); border-color: #ffe3a6; color: var(--on-gold);
+  box-shadow: 0 0 16px rgba(255, 200, 100, 0.35);
+}
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+.slider { display: block; margin-top: 10px; }
+.slider span { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.95rem; color: var(--muted); }
+.slider output { font: italic 500 1.15rem var(--display); color: var(--ink); font-variant-numeric: lining-nums tabular-nums; }
+.slider input { width: 100%; accent-color: var(--gold); }
+
+/* The clock: drag the sky, or the little sun on the line under it. */
+.scene { cursor: ew-resize; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.clock { position: absolute; z-index: 1; left: 20px; right: 20px; bottom: 26px; display: flex; align-items: baseline; gap: 12px;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.8); pointer-events: none; }
+.clock output { font: 600 2.1rem/1 var(--display); letter-spacing: 0.04em; font-variant-numeric: lining-nums tabular-nums; }
+.clock button { pointer-events: auto; padding: 3px 11px; cursor: pointer; border: 1px solid rgba(255, 217, 138, 0.6); border-radius: 999px;
+  background: rgba(9, 12, 30, 0.55); color: var(--gold); font: 600 0.62rem var(--sans); letter-spacing: 0.2em; text-transform: uppercase; }
+#clock { position: absolute; z-index: 1; left: 14px; right: 14px; bottom: 2px; width: calc(100% - 28px); height: 22px; margin: 0;
+  -webkit-appearance: none; appearance: none; background: none; cursor: ew-resize; }
+#clock::-webkit-slider-runnable-track { height: 2px; border-radius: 1px; background: rgba(255, 255, 255, 0.35); }
+#clock::-moz-range-track { height: 2px; border-radius: 1px; background: rgba(255, 255, 255, 0.35); }
+#clock::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; margin-top: -8px; border-radius: 50%;
+  background: radial-gradient(circle, #fff7dd 30%, #f2a93b 75%); box-shadow: 0 0 14px 3px rgba(255, 200, 100, 0.7); }
+#clock::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%;
+  background: radial-gradient(circle, #fff7dd 30%, #f2a93b 75%); box-shadow: 0 0 14px 3px rgba(255, 200, 100, 0.7); }
+
+.hint { margin: 2px 0 0; font: italic 500 1.02rem var(--display); color: var(--muted); min-height: 1.3em; }
+
+.primary, .secondary {
+  width: 100%; padding: 12px 16px; border-radius: 999px; cursor: pointer;
+  font: 600 0.78rem var(--sans); letter-spacing: 0.3em; text-transform: uppercase;
+}
+.primary { border: 0; background: linear-gradient(180deg, #ffe3a6, #f2a93b); color: var(--on-gold);
+  box-shadow: 0 0 28px rgba(255, 190, 90, 0.4); transition: box-shadow 0.3s, transform 0.1s; }
+.primary:hover { box-shadow: 0 0 40px rgba(255, 200, 100, 0.65); }
+.primary:active { transform: translateY(1px); }
+.primary:disabled { opacity: 0.6; cursor: progress; }
+.secondary { border: 1px solid var(--faint); background: var(--card); color: var(--ink); }
+.secondary:hover { border-color: rgba(255, 217, 138, 0.5); }
+
+.status { margin: 14px 0 10px; font: italic 500 1.05rem var(--display); color: var(--muted); min-height: 1.4em; }
+.status.error, .error { color: var(--warn); }
+
+/* --- the proposals -------------------------------------------------------------------------- */
+
+.results { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.result {
+  display: grid; grid-template-columns: 2.1em 1fr auto; gap: 2px 8px; align-items: baseline;
+  width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer;
+  padding: 13px 15px 14px; background: var(--card); border: 1px solid var(--faint); border-radius: var(--radius);
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+  animation: arrive 0.7s ease both;
+}
+.results li:nth-child(2) .result { animation-delay: 0.08s; } .results li:nth-child(3) .result { animation-delay: 0.16s; }
+.results li:nth-child(4) .result { animation-delay: 0.24s; } .results li:nth-child(5) .result { animation-delay: 0.32s; }
+.results li:nth-child(6) .result { animation-delay: 0.4s; }
+@keyframes arrive { from { opacity: 0; transform: translateY(8px); } }
+.result:hover, .result:focus-visible { border-color: rgba(255, 217, 138, 0.6); background: rgba(255, 255, 255, 0.09); }
+.result .rank { font: 500 1.25rem var(--display); color: var(--gold); }
+.result h2 { margin: 0; font: 600 1.25rem/1.2 var(--display); letter-spacing: 0.01em; }
+.result .score { font: 600 1.3rem var(--display); color: var(--gold); font-variant-numeric: lining-nums tabular-nums; }
+.result .verse { grid-column: 2 / 4; margin: 2px 0 0; font: italic 500 1.05rem/1.35 var(--display); }
+.result .meta { grid-column: 2 / 4; margin: 6px 0 0; font: 0.68rem var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+
+.lightbar { grid-column: 2 / 4; display: flex; height: 4px; border-radius: 2px; overflow: hidden; margin-top: 9px;
+  box-shadow: 0 0 10px rgba(255, 200, 100, 0.25); }
+.lightbar i { display: block; height: 100%; }
+.sun { background: var(--sun); } .shade { background: var(--shade); }
+.lit { background: var(--lit); } .dim { background: var(--dim); } .dark { background: var(--dark); }
+svg .sun { background: none; }
+
+/* --- one route ------------------------------------------------------------------------------ */
+
+.back { font: italic 500 1.05rem var(--display); padding: 0; margin-bottom: 10px; border: 0; background: none; color: var(--gold); cursor: pointer; }
+
+.detail h2 { margin: 0 0 4px; font: 600 1.7rem/1.15 var(--display); }
+.detail .verse { margin: 0 0 6px; font: italic 500 1.2rem/1.35 var(--display); }
+.detail .sub { margin: 0 0 16px; font: 0.68rem var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 6px; }
+.facts div { padding: 10px 12px; background: var(--card); border: 1px solid var(--faint); border-radius: var(--radius); }
+.facts dt { font: 0.62rem var(--sans); letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+.facts dd { margin: 2px 0 0; font: 600 1.3rem var(--display); font-variant-numeric: lining-nums tabular-nums; }
+
+.detail h3 { margin-top: 20px; }
+.why { margin: 0; padding: 0; list-style: none; }
+.why li { position: relative; margin-bottom: 5px; padding-left: 1.2em; }
+.why li::before { content: "✦"; position: absolute; left: 0; top: 0.25em; font-size: 0.6em; color: var(--gold); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; padding: 0; list-style: none;
+  font: 0.68rem var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.detail .lightbar { height: 6px; border-radius: 3px; margin-top: 0; }
+
+.actions { display: grid; gap: 8px; margin: 22px 0 8px; }
+
+/* --- while walking -------------------------------------------------------------------------- */
+
+.navcard { padding: 13px 15px; margin-bottom: 10px; background: var(--card); border: 1px solid var(--faint); border-radius: var(--radius); }
+.navcard .label { margin-bottom: 4px; }
+.navcard .big { margin: 0; font: 600 1.9rem/1.1 var(--display); font-variant-numeric: lining-nums tabular-nums; }
+.navcard p { margin: 4px 0 0; }
+.badge { display: inline-block; padding: 2px 12px; margin-right: 4px; border-radius: 999px;
+  font: 600 0.68rem var(--sans); letter-spacing: 0.2em; text-transform: uppercase; color: #fff; }
+.badge.sun, .badge.lit { color: var(--on-gold); box-shadow: 0 0 14px rgba(255, 200, 100, 0.5); }
+
+.credit { padding: 6px 20px 16px; font: 0.68rem var(--sans); letter-spacing: 0.04em; color: var(--muted); opacity: 0.8; }
+
+/* --- phones --------------------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  #map { bottom: 56%; }
+  .layout.walking #map { bottom: 36%; }
+  #map::after { background: linear-gradient(to bottom, transparent 70%, rgba(7, 10, 28, 0.7)); }
+  .panel { top: 44%; left: 0; right: 0; bottom: 0; width: auto; max-width: none;
+    border-radius: 20px 20px 0 0; border-width: 1px 0 0; background: rgba(9, 12, 30, 0.94); }
+  .layout.walking .panel { top: 64%; bottom: 0; max-height: none; }
+  .scene { height: 190px; }
+  .scene-title h1 { font-size: 1.25rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Oslo-turer: et eventyr til fots og på hjul</title>
+  <meta name="description" content="Få forslag til fine runder til fots eller på sykkel i Oslo: i sol, i skygge eller under gatelys, langs trær, vann, kunst og utsikt.">
+  <meta name="theme-color" content="#070a1c">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-phase="night">
+  <div id="veil" aria-hidden="true"><div class="veil-title">Oslo-turer</div><div class="veil-sub">finner en vei</div></div>
+
+  <div class="layout" id="layout">
+    <div id="map" aria-label="Kart"></div>
+
+    <aside class="panel" id="panel">
+      <section id="plan-view">
+        <header class="scene">
+          <svg id="scene" role="img" aria-label="Oslo sett fra fjorden i lyset på det valgte tidspunktet"></svg>
+          <div class="scene-title">
+            <h1>Oslo-turer</h1>
+            <p>Et eventyr til fots og på hjul</p>
+          </div>
+          <div class="clock">
+            <output id="clock-out" for="clock"></output>
+            <button type="button" id="now" hidden>Tilbake til nå</button>
+          </div>
+          <input type="range" id="clock" min="0" max="1435" step="5" aria-label="Klokkeslett for turen i dag">
+        </header>
+
+        <div class="inner">
+          <form id="form">
+            <fieldset>
+              <legend>Reisemåte</legend>
+              <div class="chips" data-choice="mode">
+                <button type="button" class="chip" data-value="walk" aria-pressed="true">Gå</button>
+                <button type="button" class="chip" data-value="bike" aria-pressed="false">Sykle</button>
+              </div>
+              <div class="chips" data-choice="pace">
+                <button type="button" class="chip" data-value="slow" aria-pressed="false">Rolig</button>
+                <button type="button" class="chip" data-value="normal" aria-pressed="true">Vanlig</button>
+                <button type="button" class="chip" data-value="fast" aria-pressed="false">Rask</button>
+              </div>
+              <label class="slider">
+                <span>Lengde <output id="length-out"></output></span>
+                <input type="range" id="length" min="2" max="15" step="0.5" value="5">
+              </label>
+            </fieldset>
+
+            <fieldset>
+              <legend>Lys</legend>
+              <div class="chips" data-choice="light">
+                <button type="button" class="chip" data-value="sun" aria-pressed="true">Sol</button>
+                <button type="button" class="chip" data-value="shade" aria-pressed="false">Skygge</button>
+                <button type="button" class="chip" data-value="lit" aria-pressed="false">Gatelys</button>
+                <button type="button" class="chip" data-value="any" aria-pressed="false">Samme det</button>
+              </div>
+              <p class="hint" id="sun-hint"></p>
+            </fieldset>
+
+            <fieldset>
+              <legend>Langs veien</legend>
+              <div class="chips" data-toggles="wishes">
+                <button type="button" class="chip" data-value="trees" aria-pressed="true">Trær</button>
+                <button type="button" class="chip" data-value="water" aria-pressed="true">Vann</button>
+                <button type="button" class="chip" data-value="art" aria-pressed="true">Kunst</button>
+                <button type="button" class="chip" data-value="history" aria-pressed="true">Bygg og historie</button>
+                <button type="button" class="chip" data-value="view" aria-pressed="true">Utsikt</button>
+                <button type="button" class="chip" data-value="food" aria-pressed="true">Mat</button>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Hvor</legend>
+              <div class="chips" data-choice="start">
+                <button type="button" class="chip" data-value="app" aria-pressed="true">Overrask meg</button>
+                <button type="button" class="chip" data-value="me" aria-pressed="false">Der jeg står</button>
+                <button type="button" class="chip" data-value="map" aria-pressed="false">Pek i kartet</button>
+              </div>
+              <div class="chips" data-choice="end">
+                <button type="button" class="chip" data-value="loop" aria-pressed="true">Runde hjem igjen</button>
+                <button type="button" class="chip" data-value="map" aria-pressed="false">Ende et annet sted</button>
+              </div>
+              <p class="hint" id="pick-hint"></p>
+            </fieldset>
+
+            <button type="submit" class="primary" id="go">Finn en vei</button>
+          </form>
+
+          <p class="status" id="status" aria-live="polite"></p>
+          <ol class="results" id="results"></ol>
+        </div>
+      </section>
+
+      <section id="detail-view" class="inner" hidden>
+        <button type="button" class="back" id="back">← Alle veiene</button>
+        <div id="detail"></div>
+      </section>
+
+      <section id="nav-view" class="inner" hidden>
+        <div id="nav"></div>
+        <button type="button" class="secondary" id="stop">Avslutt turen</button>
+      </section>
+
+      <footer class="credit">Kart: Kartverket. Stier, bygninger, trær og severdigheter: © OpenStreetMap-bidragsytere.</footer>
+    </aside>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
