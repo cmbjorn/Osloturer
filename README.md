@@ -1,7 +1,7 @@
 # Oslo-turer
 
 Forslag til fine runder til fots og på sykkel i Oslo. Du velger gå eller sykle, fart, lengde, lys (sol, skygge eller
-gatelys) og hva du vil ha langs ruta (trær, vann, kunst, bygg og historie, utsikt, mat). Klokka står på nå; dra i
+gatelys) og hva du vil ha langs ruta (trær, vann, kunst, bygg og historie, utsikt, mat, lekeplasser). Klokka står på nå; dra i
 himmelen øverst for å velge en annen time i dag. Appen lager flere runder på
 ekte kartdata, rangerer dem, sier hvorfor hver er god, og følger deg på kartet mens du går.
 

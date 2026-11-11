@@ -12,7 +12,7 @@ Every path and street is cut into segments of at most MAX_SEGMENT_M. Each segmen
   - lit: street lighting, from the lit tag, a lamp nearby, or a guess from the kind of way.
   - green: trees, tree rows, parks and forest along it (0-10).
   - water, forest, noisy (a main road nearby), paved, and what may use it (foot, bike).
-Points of interest (art, viewpoints, historic sites, notable buildings, parks, places to eat) are written per tile.
+Points of interest (art, viewpoints, historic sites, notable buildings, parks, playgrounds, places to eat) are written per tile.
 """
 from __future__ import annotations
 
@@ -79,6 +79,8 @@ FOOD_AMENITY = {"cafe": ("cafe", 1.0), "restaurant": ("restaurant", 1.0), "ice_c
                 "pub": ("pub", 0.8), "bar": ("pub", 0.8), "fast_food": ("fastfood", 0.6),
                 "food_court": ("restaurant", 1.0), "marketplace": ("restaurant", 1.5)}
 FOOD_SHOP = {"bakery": ("bakery", 1.0), "pastry": ("bakery", 1.0), "ice_cream": ("ice", 1.2)}
+# Playgrounds count only when the walker asks for them; most have no name.
+PLAYGROUND_WEIGHT = 2.0
 
 
 def to_xy(lon, lat):
@@ -111,6 +113,8 @@ def classify_poi(tags, is_area):
     elif historic and historic != "no":
         small = historic == "memorial" and tags.get("memorial") in ("stolperstein", "plaque")
         found = ("history", 0.3 if small else (2.0 if name else 1.0))
+    elif tags.get("leisure") == "playground" and tags.get("access") not in ("private", "no"):
+        found = ("play", PLAYGROUND_WEIGHT)
     elif tags.get("amenity") == "fountain":
         found = ("art", 1.5)
     elif tags.get("amenity") == "place_of_worship" and name:

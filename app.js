@@ -13,6 +13,7 @@ const SPEED_KMH = { walk: { slow: 3.5, normal: 4.8, fast: 6 }, bike: { slow: 12,
 const DAY_MIN = 1440;
 const CLOCK_STEP_MIN = 5;
 const FOOD_SHOWN = 8;
+const PLAY_SHOWN = 10;
 const LENGTH_KM = { walk: { min: 2, max: 15, step: 0.5, value: 5 }, bike: { min: 5, max: 30, step: 1, value: 15 } };
 const MAX_RADIUS_M = 9000;
 const SHOWN_ROUTES = 6;
@@ -45,12 +46,18 @@ const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 const VEIL_MS = 1400;
 const KIND = { art: 'kunst', culture: 'museum', history: 'historisk', building: 'bygg', view: 'utsikt',
   sight: 'severdighet', park: 'park', cafe: 'kafé', restaurant: 'spisested', bakery: 'bakeri', ice: 'is', pub: 'pub',
-  fastfood: 'gatekjøkken' };
+  fastfood: 'gatekjøkken', play: 'lekeplass' };
 const FOOD = new Set(['cafe', 'restaurant', 'bakery', 'ice', 'pub', 'fastfood']);
+const PLAY = 'play';
+const PLAY_COLOR = '#9be0b0';
+// Places listed on their own (food, playgrounds), not among the sights.
+const aside = (p) => FOOD.has(p.kind) || p.kind === PLAY;
+/** At most n of the items, spread evenly over the list. */
+const spread = (items, n) => items.filter((_, i) => Math.floor(i * n / items.length) !== Math.floor((i - 1) * n / items.length));
 
 const choice = { mode: 'walk', pace: 'normal', light: 'sun', start: 'app', end: 'loop' };
 let clockMin = null;            // minutes after midnight today; null follows the real clock
-const wishes = { trees: true, water: true, art: true, history: true, view: true, food: true };
+const wishes = { trees: true, water: true, art: true, history: true, view: true, food: true, play: false };
 const points = { start: null, end: null };
 let picking = null;
 let routes = [];
@@ -118,6 +125,10 @@ function drawRoutes() {
   for (const poi of selected.food) {
     L.circleMarker([poi.lat, poi.lon], { radius: 4, color: INK, weight: 2, fillColor: '#ff9d7a', fillOpacity: 1 })
       .bindTooltip(`${poi.name} (${KIND[poi.kind]})`).addTo(routeLayer);
+  }
+  for (const poi of selected.play) {
+    L.circleMarker([poi.lat, poi.lon], { radius: 5, color: INK, weight: 2, fillColor: PLAY_COLOR, fillOpacity: 1 })
+      .bindTooltip(poi.name).addTo(routeLayer);
   }
   L.circleMarker(selected.coords[0], LANTERN).bindTooltip('Start').addTo(routeLayer);
 }
@@ -314,7 +325,7 @@ async function startPlaces(meta, rng) {
 function nameRoutes(found) {
   const taken = new Set();
   for (const route of found) {
-    let picks = route.wanted.filter((p) => p.name && p.weight >= 2 && !FOOD.has(p.kind) && !taken.has(p.name))
+    let picks = route.wanted.filter((p) => p.name && p.weight >= 2 && !aside(p) && !taken.has(p.name))
       .slice(0, 2).map((p) => p.name);
     if (!picks.length) picks = route.streets.filter((s) => !taken.has(s)).slice(0, 2);
     if (!picks.length) picks = route.streets.slice(0, 1);
@@ -322,12 +333,17 @@ function nameRoutes(found) {
     route.title = picks.length ? `Via ${list(picks)}` : 'Runde i nabolaget';
     const names = new Set();
     const fresh = (p) => p.name && !names.has(p.name) && names.add(p.name);
-    route.shownPois = route.pois.filter((p) => !FOOD.has(p.kind) && fresh(p)).slice(0, 14);
+    route.shownPois = route.pois.filter((p) => !aside(p) && fresh(p)).slice(0, 14);
     // Places to eat, in the order they come, thinned to a handful spread along the trip.
     const food = route.scored.wishes.food
       ? route.pois.filter((p) => FOOD.has(p.kind) && fresh(p)).sort((a, b) => a.atM - b.atM) : [];
     route.foodCount = food.length;
-    route.food = food.filter((_, i) => Math.floor(i * FOOD_SHOWN / food.length) !== Math.floor((i - 1) * FOOD_SHOWN / food.length));
+    route.food = spread(food, FOOD_SHOWN);
+    // Playgrounds, in the order they come; most have no name in the map data.
+    const play = route.scored.wishes.play
+      ? route.pois.filter((p) => p.kind === PLAY).sort((a, b) => a.atM - b.atM).map((p) => ({ ...p, name: p.name || 'Lekeplass' })) : [];
+    route.playCount = play.length;
+    route.play = spread(play, PLAY_SHOWN);
     route.why = reasons(route);
     route.verse = verse(route);
   }
@@ -354,7 +370,7 @@ function verse(route) {
   if (stats.waterM >= 800) more.push(pick(['Vannet er aldri langt unna.', 'Du har vann ved siden av deg lenge.']));
   if (share(stats.greenM) >= 0.6) more.push(pick(['Trærne står tett.', 'Det er løv over deg det meste av veien.']));
   if (route.foodCount >= 4) more.push(pick(['Det lukter kaffe og nybakt underveis.', 'Det er aldri langt til en kopp kaffe.']));
-  const sight = route.wanted.find((p) => p.name && p.weight >= 3 && !FOOD.has(p.kind));
+  const sight = route.wanted.find((p) => p.name && p.weight >= 3 && !aside(p));
   if (sight) more.push(`Underveis venter ${sight.name}.`);
   if (!more.length) more.push('Rolige gater, lite hastverk.');
   return `${light} ${pick(more)}`;
@@ -373,12 +389,14 @@ function reasons(route) {
   if (share(stats.greenM) >= 0.25) why.push(`${percent(share(stats.greenM))} går langs trær eller gjennom parker og skog.`);
   if (stats.waterM >= 200) why.push(`${km(stats.waterM)} går langs vann.`);
   if (share(stats.quietM) >= 0.5) why.push(`${percent(share(stats.quietM))} går på gangveier og rolige gater.`);
-  const named = route.wanted.filter((p) => p.name && !FOOD.has(p.kind)).slice(0, 5).map((p) => p.name);
+  const named = route.wanted.filter((p) => p.name && !aside(p)).slice(0, 5).map((p) => p.name);
   if (named.length) why.push(`Du passerer ${list(named)}.`);
   if (route.foodCount === 1) why.push(`Du går forbi ${route.food[0].name}, om du blir sulten.`);
   else if (route.foodCount > 1) {
     why.push(`Du går forbi ${route.foodCount} steder å spise, blant annet ${list(route.food.slice(0, 3).map((p) => p.name))}.`);
   }
+  if (route.playCount === 1) why.push(`Du går forbi én lekeplass, ${km(route.play[0].atM)} ut i turen.`);
+  else if (route.playCount > 1) why.push(`Du går forbi ${route.playCount} lekeplasser, den første etter ${km(route.play[0].atM)}.`);
   if (route.streets.length) why.push(`Ruta går blant annet via ${list(route.streets)}.`);
   if (share(stats.repeatM) > 0.1) why.push(`${km(stats.repeatM / 2)} går du fram og tilbake langs samme strekning.`);
   return why;
@@ -493,6 +511,8 @@ function select(route) {
     ...(along.length ? [el('h3', { textContent: 'Underveis' }), el('ul', { className: 'why' }, along)] : []),
     ...(route.food.length ? [el('h3', { textContent: 'Mat langs veien' }), el('ul', { className: 'why' },
       route.food.map((p) => el('li', { textContent: `${km(p.atM)}: ${p.name} (${KIND[p.kind]})` })))] : []),
+    ...(route.play.length ? [el('h3', { textContent: 'Lekeplasser langs veien' }), el('ul', { className: 'why' },
+      route.play.map((p) => el('li', { textContent: `${km(p.atM)}: ${p.name}` })))] : []),
     el('div', { className: 'actions' }, [
       el('button', { type: 'button', className: 'primary', textContent: 'Start turen', onclick: () => startWalk(false) }),
       el('button', { type: 'button', className: 'secondary', textContent: 'Forhåndsvis turen', onclick: () => startWalk(true) }),
@@ -559,7 +579,7 @@ function onPosition(lat, lon) {
   const leftM = route.lengthM - atM;
   const segment = Math.min(index, route.segState.length - 1);
   const state = lightNow(route, segment, walk.simulated ? route.scored.time : new Date(), lat, lon);
-  const next = [...route.shownPois, ...route.food].filter((p) => p.atM > atM + 15).sort((a, b) => a.atM - b.atM)[0];
+  const next = [...route.shownPois, ...route.food, ...route.play].filter((p) => p.atM > atM + 15).sort((a, b) => a.atM - b.atM)[0];
   const done = leftM < 40 && atM > route.lengthM / 2;
 
   walk.marker.setLatLng([lat, lon]);
@@ -579,7 +599,7 @@ function onPosition(lat, lon) {
     ]),
     el('div', { className: 'navcard' }, [
       el('p', { className: 'label', textContent: 'Neste' }),
-      el('p', { textContent: next ? `Om ${km(next.atM - atM)}: ${next.name} (${KIND[next.kind]})` : 'Ikke mer å se etter før du er framme.' }),
+      el('p', { textContent: next ? `Om ${km(next.atM - atM)}: ${next.name}${next.kind === PLAY ? '' : ` (${KIND[next.kind]})`}` : 'Ikke mer å se etter før du er framme.' }),
     ]),
   );
 }

@@ -27,7 +27,7 @@ const POI_REACH_M = 60;
 const POI_FULL_WEIGHT = 3;
 const POI_WANT = { art: 'art', culture: 'history', history: 'history', building: 'history', view: 'view',
   sight: 'sight', park: 'trees', cafe: 'food', restaurant: 'food', bakery: 'food', ice: 'food', pub: 'food',
-  fastfood: 'food' };
+  fastfood: 'food', play: 'play' };
 const FOOD_WEIGHT_MOST = 3;     // however many cafés a trip passes, they count this much at most
 const POI_SHOWN_FROM_WEIGHT = 0.5;
 const SUN_UP_DEG = 0.5;
@@ -287,7 +287,7 @@ export function scoreSegments(g, mode, wishes, time) {
   const sector = Math.floor(sun.bearingDeg / SECTOR_DEG) % SECTORS;
   const leaves = LEAF_MONTHS.includes(time.getMonth());
   const light = wishes.light !== 'any' && !day ? 'lit' : wishes.light;
-  const wantsPoi = wishes.art || wishes.history || wishes.view || wishes.food;
+  const wantsPoi = wishes.art || wishes.history || wishes.view || wishes.food || wishes.play;
   const weightSum = (light === 'any' ? 0 : WEIGHT.light) + (wishes.trees ? WEIGHT.green : 0)
     + (wishes.water ? WEIGHT.water : 0) + (wantsPoi ? WEIGHT.poi : 0) + WEIGHT.quiet;
 
