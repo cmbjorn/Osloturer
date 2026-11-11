@@ -128,6 +128,62 @@ function fit(coords) {
   map.fitBounds(L.latLngBounds(coords), { paddingTopLeft: [wide ? 460 : 30, 40], paddingBottomRight: [40, 40] });
 }
 
+// The button on the map that shows where you are. The first press asks the browser for the
+// position; after that the dot follows you, and a press brings the map back to it.
+const ME_ZOOM = 16;
+const ME_ICON = L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+const LOCATE_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" '
+  + 'stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2" '
+  + 'fill="currentColor" stroke="none"/><path d="M12 2v3.5M12 18.5V22M2 12h3.5M18.5 12H22"/></svg>';
+const PERMISSION_DENIED = 1;
+const me = { watch: undefined, marker: null, at: null };
+const locateButton = el('button', { type: 'button', className: 'locate', title: 'Vis hvor jeg er', innerHTML: LOCATE_SVG });
+locateButton.setAttribute('aria-label', 'Vis hvor jeg er');
+
+function stopLocating(message) {
+  if (me.watch !== undefined) navigator.geolocation.clearWatch(me.watch);
+  me.marker?.remove();
+  Object.assign(me, { watch: undefined, marker: null, at: null });
+  locateButton.classList.remove('asking', 'on');
+  status(message, true);
+}
+
+function locate() {
+  if (me.watch !== undefined) {
+    if (me.at) map.setView(me.at, Math.max(map.getZoom(), ME_ZOOM), { animate: true });
+    return;
+  }
+  if (!navigator.geolocation) { status('Nettleseren gir ikke posisjon.', true); return; }
+  locateButton.classList.add('asking');
+  me.watch = navigator.geolocation.watchPosition(
+    (p) => {
+      const first = !me.at;
+      me.at = [p.coords.latitude, p.coords.longitude];
+      if (!me.marker) me.marker = L.marker(me.at, { icon: ME_ICON, interactive: false, zIndexOffset: 900 });
+      me.marker.setLatLng(me.at);
+      if (walk) return;       // the walk draws its own dot
+      me.marker.addTo(map);
+      if (!first) return;
+      locateButton.classList.replace('asking', 'on');
+      map.setView(me.at, Math.max(map.getZoom(), ME_ZOOM), { animate: true });
+    },
+    (error) => {
+      // A lost signal after the first fix leaves the dot where it was; the watch keeps trying.
+      if (me.at && error.code !== PERMISSION_DENIED) return;
+      stopLocating('Fikk ikke posisjonen din. Gi siden lov til å se den i nettleseren.');
+    },
+    { enableHighAccuracy: true, maximumAge: 2000 });
+}
+
+const locateControl = L.control({ position: 'topright' });
+locateControl.onAdd = () => {
+  const box = el('div', { className: 'leaflet-control' }, locateButton);
+  L.DomEvent.disableClickPropagation(box);
+  locateButton.addEventListener('click', locate);
+  return box;
+};
+locateControl.addTo(map);
+
 map.on('click', (event) => {
   if (!picking) return;
   points[picking] = [event.latlng.lat, event.latlng.lng];
@@ -248,7 +304,7 @@ async function startPlaces(meta, rng) {
     return picked;
   }
   if (choice.start === 'map' && !points.start) throw new Error('Klikk i kartet der turen skal starte først.');
-  const at = choice.start === 'me' ? await position() : points.start;
+  const at = choice.start === 'me' ? (me.at ?? await position()) : points.start;
   if (!inside(at)) throw new Error('Det punktet ligger utenfor kartet appen har over Oslo.');
   points.start = at;
   drawPoints();
@@ -461,9 +517,8 @@ function downloadGpx(route) {
 
 function startWalk(simulated) {
   const route = selected;
-  walk = { route, index: 0, simulated, marker: L.marker(route.coords[0], {
-    icon: L.divIcon({ className: '', html: '<div class="me-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }),
-    zIndexOffset: 1000 }).addTo(map) };
+  me.marker?.remove();
+  walk = { route, index: 0, simulated, marker: L.marker(route.coords[0], { icon: ME_ICON, zIndexOffset: 1000 }).addTo(map) };
   show('nav');
   $('nav').replaceChildren(el('p', { className: 'status', textContent: simulated ? '' : 'Venter på posisjonen din …' }));
   if (simulated) {
@@ -536,6 +591,7 @@ $('stop').addEventListener('click', () => {
   walk.lock?.release();
   walk.marker.remove();
   walk = null;
+  me.marker?.addTo(map);
   show('detail');
   fit(selected.coords);
 });

@@ -15,6 +15,9 @@ python3 -m http.server 8000
 
 Åpne <http://localhost:8000>. «Forhåndsvis turen» flytter prikken langs ruta uten GPS.
 
+Knappen med siktemerket øverst til høyre i kartet spør om posisjonen din og viser deg som en prikk som følger deg.
+Et nytt trykk flytter kartet tilbake til prikken.
+
 ## Slik virker den
 
 - `tools/build_data.py` leser et OpenStreetMap-utdrag av Oslo og skriver `data/` (kartruter på ca. 1 × 1 km). Hver

@@ -89,6 +89,15 @@ body {
 .me-dot { width: 18px; height: 18px; border-radius: 50%; background: #fff7dd; border: 3px solid var(--gold-deep);
   box-shadow: 0 0 0 6px rgba(255, 217, 138, 0.28), 0 0 22px 6px rgba(255, 200, 100, 0.7); }
 
+/* The button that shows where you are. */
+.locate { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--faint); background: var(--glass); color: var(--ink);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); transition: border-color 0.3s ease, color 0.3s ease; }
+.locate:hover { border-color: rgba(255, 217, 138, 0.5); }
+.locate:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.locate.asking { animation: breathe 1.6s ease-in-out infinite; }
+.locate.on { border-color: var(--gold-deep); color: var(--gold); }
+
 /* --- the panel ------------------------------------------------------------------------------ */
 
 .panel {
