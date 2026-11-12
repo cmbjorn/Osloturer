@@ -11,7 +11,8 @@ Every path and street is cut into segments of at most MAX_SEGMENT_M. Each segmen
     within HORIZON_RADIUS_M. The app compares the sun's position with it to tell sun from shade.
   - lit: street lighting, from the lit tag, a lamp nearby, or a guess from the kind of way.
   - green: trees, tree rows, parks and forest along it (0-10).
-  - water, forest, noisy (a main road nearby), paved, and what may use it (foot, bike).
+  - water, forest, noisy (a main road nearby), paved, steps, rough (no good with a pram), and what may use it
+    (foot, bike).
 Points of interest (art, viewpoints, historic sites, notable buildings, parks, playgrounds, places to eat) are written per tile.
 """
 from __future__ import annotations
@@ -69,6 +70,10 @@ PAVED = {"asphalt", "paved", "concrete", "paving_stones", "sett", "concrete:plat
          "wood"}
 UNPAVED = {"unpaved", "gravel", "fine_gravel", "compacted", "dirt", "earth", "ground", "grass", "sand", "mud",
            "pebblestone", "woodchips", "rock"}
+# Too rough to push a pram or a wheelchair over.
+ROUGH_SURFACE = {"gravel", "dirt", "earth", "ground", "grass", "sand", "mud", "pebblestone", "woodchips", "rock"}
+ROUGH_SMOOTHNESS = {"bad", "very_bad", "horrible", "very_horrible", "impassable"}
+ROUGH_TRACKTYPE = {"grade4", "grade5"}
 GREEN_VALUE = {"forest": 1.0, "wood": 1.0, "park": 0.8, "garden": 0.8, "nature_reserve": 0.8, "cemetery": 0.8,
                "allotments": 0.6, "recreation_ground": 0.6, "village_green": 0.6, "grass": 0.4, "meadow": 0.4,
                "scrub": 0.5, "heath": 0.5, "grassland": 0.4, "farmland": 0.4, "orchard": 0.7}
@@ -375,6 +380,9 @@ def main():
             paved = False
         else:
             paved = highway not in ("path", "track")
+        rough = (surface in ROUGH_SURFACE or tags.get("smoothness") in ROUGH_SMOOTHNESS
+                 or tags.get("tracktype") in ROUGH_TRACKTYPE or "sac_scale" in tags or tags.get("wheelchair") == "no"
+                 or (highway == "path" and surface is None))
         lit_tag = tags.get("lit")
         if lit_tag == "no":
             lit = 0
@@ -382,7 +390,8 @@ def main():
             lit = 3
         else:
             lit = 1 if highway in ("path", "track") else 2
-        way_flags.append(cls | foot << 3 | bike << 4 | lit << 5 | paved << 14 | steps << 15 | bike_good << 16)
+        way_flags.append(cls | foot << 3 | bike << 4 | lit << 5 | paved << 14 | steps << 15 | bike_good << 16
+                         | rough << 17)
         way_name.append(tags.get("name") or "")
     flags = np.array(way_flags)[seg_way]
     lit = (flags >> 5) & 3

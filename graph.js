@@ -16,7 +16,9 @@ const WATER = 1 << 11;
 const FOREST = 1 << 12;
 const NOISY = 1 << 13;
 const PAVED = 1 << 14;
+const STEPS = 1 << 15;
 const BIKE_GOOD = 1 << 16;
+const ROUGH = 1 << 17;
 const highwayClass = (flags) => flags & 7;
 const litLevel = (flags) => (flags >> 5) & 3;
 const greenLevel = (flags) => ((flags >> 7) & 15) / 10;
@@ -38,6 +40,8 @@ const COST_WORST = 2.4;
 const COST_SPAN = 1.9;
 const BIKE_FOOTPATH_FACTOR = 1.3;
 const BIKE_UNPAVED_FACTOR = 1.4;
+const ROLLING_ROUGH_FACTOR = 3;  // with a pram, a rough path is the last resort
+const SHARED_SNAP_M = 4;        // a shared trip's points are rounded to about a metre
 const HEURISTIC_FACTOR = 0.4;   // below the cheapest possible cost per metre
 const REUSE_FACTOR = 4;         // walking the same stretch twice costs this much more
 const DETOUR = 1.35;            // paths are about this much longer than the straight line
@@ -205,12 +209,13 @@ function buildGraph(tiles, center, mPerDegLon) {
   return g;
 }
 
-/** The adjacency for one way of moving, limited to the largest connected part. */
-export function prepare(g, mode) {
+/** The adjacency for one way of moving, limited to the largest connected part. Rolling (a pram, a wheelchair) takes no steps. */
+export function prepare(g, mode, rolling = false) {
   const allowed = mode === 'bike' ? BIKE : FOOT;
+  const barred = rolling ? STEPS : 0;
   const degree = new Int32Array(g.nodeCount + 1);
   for (let s = 0; s < g.segmentCount; s++) {
-    if (g.flags[s] & allowed) { degree[g.a[s]]++; degree[g.b[s]]++; }
+    if ((g.flags[s] & allowed) && !(g.flags[s] & barred)) { degree[g.a[s]]++; degree[g.b[s]]++; }
   }
   const offset = new Int32Array(g.nodeCount + 1);
   for (let i = 0; i < g.nodeCount; i++) offset[i + 1] = offset[i] + degree[i];
@@ -218,7 +223,7 @@ export function prepare(g, mode) {
   const adjNode = new Int32Array(offset[g.nodeCount]);
   const adjSeg = new Int32Array(offset[g.nodeCount]);
   for (let s = 0; s < g.segmentCount; s++) {
-    if (!(g.flags[s] & allowed)) continue;
+    if (!(g.flags[s] & allowed) || (g.flags[s] & barred)) continue;
     adjNode[fill[g.a[s]]] = g.b[s]; adjSeg[fill[g.a[s]]++] = s;
     adjNode[fill[g.b[s]]] = g.a[s]; adjSeg[fill[g.b[s]]++] = s;
   }
@@ -319,6 +324,7 @@ export function scoreSegments(g, mode, wishes, time) {
       if (highwayClass(flags) === 0 && !(flags & BIKE_GOOD)) f *= BIKE_FOOTPATH_FACTOR;
       if (!(flags & PAVED)) f *= BIKE_UNPAVED_FACTOR;
     }
+    if (wishes.rolling && (flags & ROUGH)) f *= ROLLING_ROUGH_FACTOR;
     factor[s] = f;
   }
   return { quality, factor, sunlit, sun, day, light, time, wishes, wantsPoi };
@@ -507,7 +513,8 @@ function candidate(g, prep, scored, request, rng) {
 }
 
 function describe(g, scored, path, request) {
-  const stats = { lengthM: path.lengthM, sunM: 0, litM: 0, greenM: 0, waterM: 0, quietM: 0, repeatM: 0, qualityM: 0 };
+  const stats = { lengthM: path.lengthM, sunM: 0, litM: 0, greenM: 0, waterM: 0, quietM: 0, repeatM: 0, qualityM: 0,
+    roughM: 0 };
   const poiAt = new Map();
   const nameM = new Map();
   // How much of the trip runs along itself (out and back), not only over the very same segment.
@@ -547,6 +554,7 @@ function describe(g, scored, path, request) {
     if (litLevel(flags) >= 2) stats.litM += len;
     if (greenLevel(flags) >= 0.5) stats.greenM += len;
     if (flags & WATER) stats.waterM += len;
+    if (flags & ROUGH) stats.roughM += len;
     if (highwayClass(flags) <= 3 && !(flags & NOISY)) stats.quietM += len;
     if (g.name[s]) nameM.set(g.name[s], (nameM.get(g.name[s]) || 0) + len);
     for (const p of g.segPois[s] || []) if (!poiAt.has(p)) poiAt.set(p, at);
@@ -600,6 +608,41 @@ export async function findRoutes(g, prep, scored, request, rng, tries, onProgres
     else if (route.score > routes[twin].score) routes[twin] = route;
   }
   return routes.sort((a, b) => b.score - a.score);
+}
+
+/** A trip somebody shared, found again in the graph from its points ([lat, lon], rounded). Null when it is not there. */
+export function routeFromCoords(g, prep, scored, coords, askedM) {
+  const xy = ([lat, lon]) => [(lon - g.center.lon) * g.mPerDegLon, (lat - g.center.lat) * M_PER_DEG_LAT];
+  const nodes = [nearestNode(g, prep, ...xy(coords[0]))];
+  if (nodes[0] === -1) return null;
+  const segs = [];
+  for (let i = 1; i < coords.length; i++) {
+    const [x, y] = xy(coords[i]);
+    const from = nodes[nodes.length - 1];
+    let best = -1;
+    let bestDistance = SHARED_SNAP_M;
+    for (let e = prep.offset[from]; e < prep.offset[from + 1]; e++) {
+      const d = Math.hypot(g.x[prep.adjNode[e]] - x, g.y[prep.adjNode[e]] - y);
+      if (d < bestDistance) { bestDistance = d; best = e; }
+    }
+    if (best !== -1) {
+      segs.push(prep.adjSeg[best]);
+      nodes.push(prep.adjNode[best]);
+      continue;
+    }
+    // The map has changed since the trip was made: the shortest way to the next point.
+    const to = nearestNode(g, prep, x, y);
+    if (to === -1) return null;
+    if (to === from) continue;
+    const leg = shortestPath(g, prep, from, to, g.len);
+    if (!leg) return null;
+    segs.push(...leg.segs);
+    nodes.push(...leg.nodes.slice(1));
+  }
+  if (!segs.length) return null;
+  let lengthM = 0;
+  for (const s of segs) lengthM += g.len[s];
+  return describe(g, scored, { nodes, segs, lengthM }, { lengthM: askedM || lengthM });
 }
 
 /** Sun or shade on a stretch of a finished route right now (for the view while walking). */

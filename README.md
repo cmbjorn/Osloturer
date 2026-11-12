@@ -15,6 +15,9 @@ python3 -m http.server 8000
 
 Åpne <http://localhost:8000>. «Forhåndsvis turen» flytter prikken langs ruta uten GPS.
 
+«Trillevennlig» (til fots) lager runder uten trapper og helst uten grov sti, for barnevogn og rullestol. «Del turen»
+lager en lenke med hele turen i seg; den som åpner lenka får samme runde.
+
 Knappen med siktemerket øverst til høyre i kartet spør om posisjonen din og viser deg som en prikk som følger deg.
 Et nytt trykk flytter kartet tilbake til prikken.
 
@@ -25,7 +28,8 @@ Et nytt trykk flytter kartet tilbake til prikken.
   - en horisont: for 24 himmelretninger, hvor høyt nærmeste bygninger (innen 90 m) rager. Appen sammenligner den
     med solas stilling på tidspunktet og vet om biten ligger i sol eller skygge.
   - gatelys: fra `lit`-merket, en lyktestolpe innen 20 m, eller en antakelse ut fra type vei.
-  - grønt (trær, trerekker, parker, skog), vann, støy fra hovedvei, dekke, og om den kan gås og sykles.
+  - grønt (trær, trerekker, parker, skog), vann, støy fra hovedvei, dekke, trapper, grov sti, og om den kan gås og
+    sykles.
 - `graph.js` gir hver bit en verdi ut fra ønskene, legger tilfeldige hjørner rundt startpunktet, finner den beste
   veien mellom dem, og rangerer rundene. Hvert søk gir nye forslag.
 - `sun.js` regner ut solas stilling. `app.js` er siden. `scene.js` tegner Oslo sett fra fjorden øverst i panelet;

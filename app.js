@@ -1,7 +1,7 @@
 // Oslo-turer: the page. It asks what kind of trip is wanted, lets graph.js propose and rank
 // round trips on real map data, shows why each is good, and follows along while walking.
 
-import { loadMeta, loadGraph, prepare, scoreSegments, findRoutes, nearestNode, mulberry32, lightNow } from './graph.js';
+import { loadMeta, loadGraph, prepare, scoreSegments, findRoutes, routeFromCoords, nearestNode, mulberry32, lightNow } from './graph.js';
 import { sunPosition } from './sun.js';
 import { setScene } from './scene.js';
 
@@ -44,6 +44,8 @@ const GOLD = '#ffd98a';
 const LANTERN = { radius: 7, color: '#f2a93b', weight: 3, fillColor: '#fff7dd', fillOpacity: 1 };
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 const VEIL_MS = 1400;
+const ROUGH_WORTH_SAYING_M = 30;
+const COPIED_SHOWN_MS = 2500;
 const KIND = { art: 'kunst', culture: 'museum', history: 'historisk', building: 'bygg', view: 'utsikt',
   sight: 'severdighet', park: 'park', cafe: 'kafé', restaurant: 'spisested', bakery: 'bakeri', ice: 'is', pub: 'pub',
   fastfood: 'gatekjøkken', play: 'lekeplass' };
@@ -57,7 +59,7 @@ const spread = (items, n) => items.filter((_, i) => Math.floor(i * n / items.len
 
 const choice = { mode: 'walk', pace: 'normal', light: 'sun', start: 'app', end: 'loop' };
 let clockMin = null;            // minutes after midnight today; null follows the real clock
-const wishes = { trees: true, water: true, art: true, history: true, view: true, food: true, play: false };
+const wishes = { trees: true, water: true, art: true, history: true, view: true, food: true, play: false, rolling: false };
 const points = { start: null, end: null };
 let picking = null;
 let routes = [];
@@ -242,6 +244,7 @@ function onChoice(name, value) {
     const range = LENGTH_KM[value];
     Object.assign($('length'), { min: range.min, max: range.max, step: range.step });
     $('length').value = range.value;
+    $('rolling-row').hidden = value === 'bike';
   }
   if (name === 'start') { points.start = null; picking = value === 'map' ? 'start' : null; }
   if (name === 'end') { points.end = null; if (value === 'map' && !picking) picking = 'end'; if (value === 'loop' && picking === 'end') picking = null; }
@@ -257,12 +260,16 @@ for (const group of document.querySelectorAll('[data-choice]')) {
     onChoice(group.dataset.choice, chip.dataset.value);
   });
 }
-document.querySelector('[data-toggles]').addEventListener('click', (event) => {
-  const chip = event.target.closest('.chip');
-  if (!chip) return;
-  wishes[chip.dataset.value] = !wishes[chip.dataset.value];
-  chip.setAttribute('aria-pressed', String(wishes[chip.dataset.value]));
-});
+for (const group of document.querySelectorAll('[data-toggles]')) {
+  group.addEventListener('click', (event) => {
+    const chip = event.target.closest('.chip');
+    if (!chip) return;
+    wishes[chip.dataset.value] = !wishes[chip.dataset.value];
+    chip.setAttribute('aria-pressed', String(wishes[chip.dataset.value]));
+  });
+}
+/** What is asked for on this trip: the wishes, the light, and rolling only on foot. */
+const asked = () => ({ ...wishes, rolling: wishes.rolling && choice.mode === 'walk', light: choice.light });
 $('length').addEventListener('input', updateHints);
 $('clock').addEventListener('input', () => setClock(Number($('clock').value)));
 $('now').addEventListener('click', () => setClock(null));
@@ -395,6 +402,10 @@ function reasons(route) {
   else if (route.foodCount > 1) {
     why.push(`Du går forbi ${route.foodCount} steder å spise, blant annet ${list(route.food.slice(0, 3).map((p) => p.name))}.`);
   }
+  if (scored.wishes.rolling) {
+    why.push(stats.roughM < ROUGH_WORTH_SAYING_M ? 'Ingen trapper og ingen grov sti: turen kan trilles.'
+      : `Ingen trapper, men ${km(stats.roughM)} går på grov sti.`);
+  }
   if (route.playCount === 1) why.push(`Du går forbi én lekeplass, ${km(route.play[0].atM)} ut i turen.`);
   else if (route.playCount > 1) why.push(`Du går forbi ${route.playCount} lekeplasser, den første etter ${km(route.play[0].atM)}.`);
   if (route.streets.length) why.push(`Ruta går blant annet via ${list(route.streets)}.`);
@@ -426,15 +437,16 @@ async function search(event) {
       const radiusM = Math.min(MAX_RADIUS_M, straightM / 2 + lengthM * 0.33 + 400);
       status(`Bretter ut kartet rundt ${place.name} …`);
       const graph = await loadGraph(center, radiusM, (done, total) => status(`Bretter ut kartet rundt ${place.name}: ${done} av ${total} …`));
-      const prep = prepare(graph, choice.mode);
-      const scored = scoreSegments(graph, choice.mode, { ...wishes, light: choice.light }, middle);
+      const prep = prepare(graph, choice.mode, asked().rolling);
+      const scored = scoreSegments(graph, choice.mode, asked(), middle);
       const node = (at) => nearestNode(graph, prep, (at[1] - center.lon) * graph.mPerDegLon, (at[0] - center.lat) * M_PER_DEG_LAT);
       const startNode = node(place.at);
       const endNode = choice.end === 'map' ? node(end) : startNode;
       if (startNode === -1 || endNode === -1) continue;
       const here = await findRoutes(graph, prep, scored, { startNode, endNode, lengthM }, rng,
         Math.ceil(TRIES / places.length) + 2, (i, n) => status(`Leter etter veier fra ${place.name}: ${i} av ${n} …`));
-      here.forEach((route) => { route.from = place.name; route.mode = choice.mode; route.speedKmh = speedKmh; });
+      here.forEach((route) => Object.assign(route, { from: place.name, mode: choice.mode, pace: choice.pace, speedKmh, askedM: lengthM,
+        clockMin }));
       found.push(...here);
     }
     if (!found.length) throw new Error('Fant ingen runde der. Prøv et annet startpunkt eller en annen lengde.');
@@ -516,6 +528,7 @@ function select(route) {
     el('div', { className: 'actions' }, [
       el('button', { type: 'button', className: 'primary', textContent: 'Start turen', onclick: () => startWalk(false) }),
       el('button', { type: 'button', className: 'secondary', textContent: 'Forhåndsvis turen', onclick: () => startWalk(true) }),
+      el('button', { type: 'button', className: 'secondary', textContent: 'Del turen', onclick: (event) => share(route, event.currentTarget) }),
       el('button', { type: 'button', className: 'secondary', textContent: 'Last ned GPX', onclick: () => downloadGpx(route) }),
     ]),
   ]));
@@ -523,6 +536,158 @@ function select(route) {
   fit(route.coords);
 }
 $('back').addEventListener('click', () => select(null));
+
+// --- sharing a trip --------------------------------------------------------------------------
+// The whole trip is in the link, after #tur=: how it was asked for and every point of the path.
+// The page has no server to keep it on.
+
+const SHARE_KEY = '#tur=';
+const SHARE_VERSION = '1';
+const SHARE_DEG = 1e5;          // points are kept to about a metre
+const SHARE_MARGIN_M = 300;
+const SHARE_DIGITS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+const WISH_LETTER = { trees: 't', water: 'w', art: 'a', history: 'h', view: 'v', food: 'f', play: 'p', rolling: 'r' };
+const LIGHT_LETTER = { sun: 's', shade: 'h', lit: 'l', any: 'a' };
+const letterOf = (table, letter) => Object.keys(table).find((key) => table[key] === letter);
+
+/** Whole numbers as text: five bits a digit, the sixth says that more follow. */
+function packNumbers(numbers) {
+  let text = '';
+  for (const number of numbers) {
+    let rest = number < 0 ? -2 * number - 1 : 2 * number;
+    do {
+      const digit = rest % 32;
+      rest = Math.floor(rest / 32);
+      text += SHARE_DIGITS[digit + (rest ? 32 : 0)];
+    } while (rest);
+  }
+  return text;
+}
+
+function unpackNumbers(text) {
+  const numbers = [];
+  let value = 0;
+  let scale = 1;
+  for (const char of text) {
+    const digit = SHARE_DIGITS.indexOf(char);
+    if (digit === -1) throw new Error('bad digit');
+    value += (digit % 32) * scale;
+    scale *= 32;
+    if (digit < 32) {
+      numbers.push(value % 2 ? -(value + 1) / 2 : value / 2);
+      value = 0;
+      scale = 1;
+    }
+  }
+  return numbers;
+}
+
+function shareLink(route) {
+  const numbers = [];
+  let before = [0, 0];
+  for (const [lat, lon] of route.coords) {
+    const now = [Math.round(lat * SHARE_DEG), Math.round(lon * SHARE_DEG)];
+    numbers.push(now[0] - before[0], now[1] - before[1]);
+    before = now;
+  }
+  const { wishes: w, light } = route.scored;
+  const fields = [SHARE_VERSION, route.mode[0] + route.pace[0], Math.round(route.askedM / 100), LIGHT_LETTER[light],
+    Object.keys(WISH_LETTER).filter((key) => w[key]).map((key) => WISH_LETTER[key]).join('') || '-',
+    route.clockMin ?? 'n', packNumbers(numbers)];
+  return `${location.origin}${location.pathname}${SHARE_KEY}${fields.join('.')}`;
+}
+
+async function share(route, button) {
+  const url = shareLink(route);
+  const say = (text) => {
+    button.textContent = text;
+    setTimeout(() => { button.textContent = 'Del turen'; }, COPIED_SHOWN_MS);
+  };
+  if (navigator.share) {
+    try { await navigator.share({ title: `Oslo-turer: ${route.title}`, url }); return; } catch (error) {
+      if (error.name === 'AbortError') return;      // closed without sharing
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    say('Lenka er kopiert');
+  } catch {
+    window.prompt('Kopier lenka:', url);
+  }
+}
+
+/** Shows the pressed chips as the choices and wishes are. */
+function syncChips() {
+  for (const group of document.querySelectorAll('[data-choice]')) {
+    for (const chip of group.querySelectorAll('.chip')) {
+      chip.setAttribute('aria-pressed', String(chip.dataset.value === choice[group.dataset.choice]));
+    }
+  }
+  for (const chip of document.querySelectorAll('[data-toggles] .chip')) {
+    chip.setAttribute('aria-pressed', String(Boolean(wishes[chip.dataset.value])));
+  }
+}
+
+/** Opens the trip in the link, if the page was opened with one. */
+async function openShared() {
+  if (!location.hash.startsWith(SHARE_KEY)) return;
+  try {
+    let parsed;
+    try {
+      const [version, how, length, light, letters, minute, path] = location.hash.slice(SHARE_KEY.length).split('.');
+      const mode = { w: 'walk', b: 'bike' }[how[0]];
+      const pace = { s: 'slow', n: 'normal', f: 'fast' }[how[1]];
+      const numbers = unpackNumbers(path);
+      const coords = [];
+      let at = [0, 0];
+      for (let i = 0; i + 1 < numbers.length; i += 2) {
+        at = [at[0] + numbers[i], at[1] + numbers[i + 1]];
+        coords.push([at[0] / SHARE_DEG, at[1] / SHARE_DEG]);
+      }
+      const askedM = Number(length) * 100;
+      const minuteOfTrip = minute === 'n' ? null : Number(minute);
+      const lightName = letterOf(LIGHT_LETTER, light);
+      if (version !== SHARE_VERSION || !mode || !pace || !lightName || !(askedM > 0) || coords.length < 2
+        || !(minuteOfTrip === null || (minuteOfTrip >= 0 && minuteOfTrip < DAY_MIN))) throw new Error('bad link');
+      parsed = { mode, pace, askedM, light: lightName, letters, minuteOfTrip, coords };
+    } catch {
+      throw new Error('Lenka til turen er ikke hel. Be om å få den en gang til.');
+    }
+    const { coords } = parsed;
+    onChoice('mode', parsed.mode);
+    Object.assign(choice, { pace: parsed.pace, light: parsed.light, start: 'app', end: 'loop' });
+    for (const key of Object.keys(WISH_LETTER)) wishes[key] = parsed.letters.includes(WISH_LETTER[key]);
+    $('length').value = parsed.askedM / 1000;
+    picking = null;
+    points.start = null;
+    points.end = null;
+    drawPoints();
+    syncChips();
+    setClock(parsed.minuteOfTrip);
+
+    status('Henter turen du fikk …');
+    const lats = coords.map((c) => c[0]);
+    const lons = coords.map((c) => c[1]);
+    const center = { lat: (Math.min(...lats) + Math.max(...lats)) / 2, lon: (Math.min(...lons) + Math.max(...lons)) / 2 };
+    const radiusM = SHARE_MARGIN_M + Math.max(...coords.map(([lat, lon]) =>
+      Math.hypot((lat - center.lat) * M_PER_DEG_LAT, (lon - center.lon) * M_PER_DEG_LON)));
+    const graph = await loadGraph(center, radiusM, (done, total) => status(`Henter turen du fikk: ${done} av ${total} …`));
+    const prep = prepare(graph, choice.mode, asked().rolling);
+    const speedKmh = speed();
+    const middle = new Date(chosenTime().getTime() + parsed.askedM / 1000 / speedKmh * 1800000);
+    const route = routeFromCoords(graph, prep, scoreSegments(graph, choice.mode, asked(), middle), coords, parsed.askedM);
+    if (!route) throw new Error('Fant ikke turen i kartet. Den kan være laget på et eldre kart.');
+    Object.assign(route, { from: 'en delt lenke', mode: choice.mode, pace: choice.pace, speedKmh, askedM: parsed.askedM, clockMin });
+    routes = [route];
+    nameRoutes(routes);
+    status('Turen du fikk. «Finn en vei» lager nye med de samme ønskene.');
+    renderResults();
+    select(route);
+  } catch (error) {
+    status(error.message, true);
+  }
+}
+window.addEventListener('hashchange', openShared);
 
 function downloadGpx(route) {
   const safe = (text) => text.replace(/[<>&]/g, '');
@@ -617,5 +782,5 @@ $('stop').addEventListener('click', () => {
 });
 
 updateHints();
-loadMeta().catch(() => status('Kartdataene mangler. Kjør tools/build_data.py.', true));
+loadMeta().then(openShared, () => status('Kartdataene mangler. Kjør tools/build_data.py.', true));
 setTimeout(() => $('veil').classList.add('lifted'), VEIL_MS);
